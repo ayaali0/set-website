@@ -6,6 +6,7 @@
 <title>SET — Considered Clothing</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;1,9..144,400&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root{
     --bone:#EDEAE2;
@@ -326,14 +327,14 @@
     <button class="modal-close" onclick="closeModal('login')">✕</button>
     <h2>Welcome back</h2>
     <p class="sub">Log in to track orders and saved sets.</p>
-    <form onsubmit="return fakeSubmit(event,'Logged in — welcome back.')">
+    <form onsubmit="return handleLogin(event)">
       <div class="field">
         <label>Email</label>
-        <input type="email" placeholder="you@email.com" required>
+        <input type="email" id="loginEmail" placeholder="you@email.com" required>
       </div>
       <div class="field">
         <label>Password</label>
-        <input type="password" placeholder="••••••••" required minlength="6">
+        <input type="password" id="loginPassword" placeholder="••••••••" required minlength="6">
       </div>
       <button class="btn btn-primary" type="submit">Log in →</button>
     </form>
@@ -347,24 +348,24 @@
     <button class="modal-close" onclick="closeModal('signup')">✕</button>
     <h2>Join SET</h2>
     <p class="sub">Create an account to start your first set.</p>
-    <form onsubmit="return fakeSubmit(event,'Account created — welcome to SET.')">
+    <form onsubmit="return handleSignup(event)">
       <div class="field-row">
         <div class="field">
           <label>First name</label>
-          <input type="text" placeholder="Aya" required>
+          <input type="text" id="signupFirstName" placeholder="Aya" required>
         </div>
         <div class="field">
           <label>Last name</label>
-          <input type="text" placeholder="Ahmed" required>
+          <input type="text" id="signupLastName" placeholder="Ahmed" required>
         </div>
       </div>
       <div class="field">
         <label>Email</label>
-        <input type="email" placeholder="you@email.com" required>
+        <input type="email" id="signupEmail" placeholder="you@email.com" required>
       </div>
       <div class="field">
         <label>Password</label>
-        <input type="password" placeholder="Min. 6 characters" required minlength="6">
+        <input type="password" id="signupPassword" placeholder="Min. 6 characters" required minlength="6">
       </div>
       <button class="btn btn-primary" type="submit">Create account →</button>
     </form>
@@ -416,6 +417,16 @@
 <div class="toast" id="toast"></div>
 
 <script>
+<script>
+  // ============================================
+  // PASTE YOUR OWN SUPABASE VALUES BELOW
+  // (from Supabase dashboard → Settings → API)
+  // ============================================
+  const SUPABASE_URL = "https://hjwfpxltyzttfuvovacc.supabase.co/rest/v1/";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhqd2ZweGx0eXp0dGZ1dm92YWNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzMDMxMjQsImV4cCI6MjA5OTg3OTEyNH0.mS9zlOlqjJ6SG4y_OGoqm2__ajnKHqLhHAr_pmORfco";
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  // ============================================
+
   const products = [
     {id:'01', name:'Structured Overcoat', price:6800, desc:'Wool-blend, boxy fit', img:'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=700&q=80&auto=format&fit=crop'},
     {id:'02', name:'Column Trouser', price:3200, desc:'Straight leg, mid-rise', img:'https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=700&q=80&auto=format&fit=crop'},
@@ -505,6 +516,47 @@
     document.getElementById('overlay-checkout').classList.remove('active');
     cart = []; renderCart(); closeCart();
     showToast('Paid with Apple Pay — order placed.');
+  }
+
+  async function handleSignup(e){
+    e.preventDefault();
+    const firstName = document.getElementById('signupFirstName').value;
+    const lastName = document.getElementById('signupLastName').value;
+    const email = document.getElementById('signupEmail').value;
+    const password = document.getElementById('signupPassword').value;
+
+    const { data, error } = await supabaseClient.auth.signUp({
+      email: email,
+      password: password,
+      options: { data: { first_name: firstName, last_name: lastName } }
+    });
+
+    if(error){
+      showToast('Error: ' + error.message);
+      return false;
+    }
+    closeModal('signup');
+    showToast('Account created — welcome to SET, ' + firstName + '.');
+    return false;
+  }
+
+  async function handleLogin(e){
+    e.preventDefault();
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+
+    const { data, error } = await supabaseClient.auth.signInWithPassword({
+      email: email,
+      password: password
+    });
+
+    if(error){
+      showToast('Error: ' + error.message);
+      return false;
+    }
+    closeModal('login');
+    showToast('Logged in — welcome back.');
+    return false;
   }
 
   function fakeSubmit(e, message){
