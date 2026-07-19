@@ -255,6 +255,37 @@
   }
   .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
 
+  /* Account panel */
+.account-head{display:flex; align-items:center; gap:16px; margin-bottom:28px;}
+.avatar{
+  width:56px; height:56px; border-radius:50%; background:var(--maroon); color:var(--bone);
+  display:flex; align-items:center; justify-content:center; font-family:'Fraunces',serif;
+  font-size:20px; font-weight:600; flex-shrink:0;
+}
+.account-head h2{font-size:22px; margin-bottom:2px;}
+.account-head p{font-size:13px; color:var(--grey);}
+.account-section-title{
+  font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.08em;
+  text-transform:uppercase; color:var(--navy); margin:26px 0 12px; padding-bottom:8px;
+  border-bottom:1px solid var(--line);
+}
+.order-row{
+  display:flex; justify-content:space-between; align-items:flex-start;
+  padding:12px 0; border-bottom:1px solid var(--line); font-size:13px;
+}
+.order-row .o-meta{color:var(--grey); font-size:11.5px; font-family:'IBM Plex Mono',monospace; margin-top:3px;}
+.order-row .o-total{font-family:'IBM Plex Mono',monospace; font-weight:600;}
+.empty-note{font-size:13px; color:var(--grey); padding:14px 0;}
+.saved-card-placeholder{
+  border:1px dashed var(--line); border-radius:3px; padding:16px; font-size:12.5px;
+  color:var(--grey); line-height:1.6;
+}
+.logout-btn{
+  margin-top:26px; width:100%; padding:12px; background:transparent; border:1px solid var(--line);
+  font-family:'IBM Plex Mono',monospace; font-size:12px; cursor:pointer; color:var(--ink);
+}
+.logout-btn:hover{border-color:var(--ink);}
+
   @media (max-width:820px){
     .hero{grid-template-columns:1fr;}
     nav.links{display:none;}
@@ -272,7 +303,7 @@
     <a href="#about">About</a>
   </nav>
   <div class="nav-actions">
-    <button class="icon-btn" onclick="openModal('login')">◇ Account</button>
+    <button class="icon-btn" id="accountBtn" onclick="handleAccountClick()">◇ Account</button>
     <button class="icon-btn" onclick="openCart()">◈ Cart <span class="cart-count" id="cartCount">0</span></button>
   </div>
 </header>
@@ -414,6 +445,32 @@
   </div>
 </div>
 
+<!-- ACCOUNT MODAL -->
+<div class="overlay" id="overlay-account">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('account')">✕</button>
+    <div class="account-head">
+      <div class="avatar" id="accountAvatar">--</div>
+      <div>
+        <h2 class="serif" id="accountName">—</h2>
+        <p id="accountEmail">—</p>
+      </div>
+    </div>
+
+    <div class="account-section-title">Order History</div>
+    <div id="orderList">
+      <p class="empty-note">Loading...</p>
+    </div>
+
+    <div class="account-section-title">Saved Payment Methods</div>
+    <div class="saved-card-placeholder">
+      No saved cards yet. Once payment is live, cards you save at checkout will appear here as "Visa •••• 4242" — SET never stores your actual card number; that's handled securely by our payment processor.
+    </div>
+
+    <button class="logout-btn" onclick="handleLogout()">Log out</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -508,6 +565,7 @@
 
   function fakeApplePay(){
     document.getElementById('overlay-checkout').classList.remove('active');
+    saveOrder();
     cart = []; renderCart(); closeCart();
     showToast('Paid with Apple Pay — order placed.');
   }
@@ -553,11 +611,98 @@
     return false;
   }
 
+// ---------- ACCOUNT / AUTH STATE ----------
+let currentUser = null;
+
+function handleAccountClick(){
+  if(currentUser){
+    openModal('account');
+    loadOrderHistory();
+  } else {
+    openModal('login');
+  }
+}
+
+function updateAccountUI(user){
+  currentUser = user;
+  const btn = document.getElementById('accountBtn');
+  if(user){
+    const firstName = user.user_metadata?.first_name || user.email.split('@')[0];
+    btn.textContent = '◆ ' + firstName;
+    document.getElementById('accountName').textContent =
+      (user.user_metadata?.first_name || '') + ' ' + (user.user_metadata?.last_name || '');
+    document.getElementById('accountEmail').textContent = user.email;
+    document.getElementById('accountAvatar').textContent =
+      (user.user_metadata?.first_name?.[0] || user.email[0]).toUpperCase();
+  } else {
+    btn.textContent = '◇ Account';
+  }
+}
+
+async function loadOrderHistory(){
+  const listEl = document.getElementById('orderList');
+  if(!currentUser){ listEl.innerHTML = ''; return; }
+  listEl.innerHTML = '<p class="empty-note">Loading...</p>';
+
+  const { data, error } = await supabaseClient
+    .from('orders')
+    .select('*')
+    .eq('user_id', currentUser.id)
+    .order('created_at', { ascending: false });
+
+  if(error){
+    listEl.innerHTML = `<p class="empty-note">Couldn't load orders: ${error.message}</p>`;
+    return;
+  }
+  if(!data || data.length === 0){
+    listEl.innerHTML = '<p class="empty-note">No orders yet — your first order will show up here.</p>';
+    return;
+  }
+  listEl.innerHTML = data.map(order => {
+    const date = new Date(order.created_at).toLocaleDateString();
+    const itemNames = order.items.map(i => i.name).join(', ');
+    return `
+      <div class="order-row">
+        <div>
+          <div>${itemNames}</div>
+          <div class="o-meta">${date} · ${order.status}</div>
+        </div>
+        <div class="o-total">${formatEGP(order.total)}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function handleLogout(){
+  await supabaseClient.auth.signOut();
+  updateAccountUI(null);
+  closeModal('account');
+  showToast('Logged out.');
+}
+
+supabaseClient.auth.getSession().then(({ data }) => {
+  updateAccountUI(data.session ? data.session.user : null);
+});
+supabaseClient.auth.onAuthStateChange((event, session) => {
+  updateAccountUI(session ? session.user : null);
+});
+
+async function saveOrder(){
+  if(!currentUser || cart.length === 0) return;
+  const total = cart.reduce((sum,p) => sum + p.price, 0);
+  const { error } = await supabaseClient.from('orders').insert({
+    user_id: currentUser.id,
+    items: cart,
+    total: total
+  });
+  if(error) console.error('Order save failed:', error.message);
+}
+  
   function fakeSubmit(e, message){
     e.preventDefault();
     const overlay = e.target.closest('.overlay');
     if(overlay) overlay.classList.remove('active');
-    if(message.includes('Order placed')){ cart = []; renderCart(); closeCart(); }
+    if(message.includes('Order placed')){ saveOrder(); cart = []; renderCart(); closeCart(); }
     showToast(message);
     return false;
   }
